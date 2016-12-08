@@ -25,11 +25,12 @@ def get_all_matching(ticker):
     for market in data.json()['Markets']:
         if market['TickerSymbol'].lower().startswith(ticker.lower()):
             if len(market['Contracts']) == 1:
-              response += '%s: Bid: %s Ask: %s Last: %s\n' % (
+              response += '%s: Bid: %s Ask: %s Last: %s\n %s' % (
                 market['TickerSymbol'],
                 market['Contracts'][0]['BestSellYesCost'],
                 market['Contracts'][0]['BestBuyYesCost'],
                 market['Contracts'][0]['LastTradePrice'],
+                market['Contracts'][0]['URL'],
               )
             else:
                 for contract in market['Contracts']:
