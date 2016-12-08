@@ -40,6 +40,7 @@ def get_all_matching(ticker):
                       contract['BestBuyYesCost'],
                       contract['LastTradePrice'],
                     )
+                response += market['URL'] + '\n'
     if response.strip() == "":
         response = "No matching contracts found"
     return response.strip()
