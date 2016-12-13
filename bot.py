@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import time
 from slackclient import SlackClient
@@ -34,6 +35,8 @@ def get_all_matching(ticker):
               )
             else:
                 for contract in market['Contracts']:
+                    if contract['BestSellYesCost'] == None:
+                        continue
                     response += '- %s: Bid: %s Ask: %s Last: %s\n' % (
                       contract['TickerSymbol'],
                       contract['BestSellYesCost'],
