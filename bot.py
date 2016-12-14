@@ -51,7 +51,7 @@ def contracts_in_range(low, high):
     data = requests.get("https://www.predictit.org/api/marketdata/all")
     response = ""
     for market in data.json()['Markets']:
-        if len(market['Contracts']) == 1 and round(float(market['Contracts'][0]['LastTradePrice'])*100) in range(low,high):
+        if len(market['Contracts']) == 1 and round(float(market['Contracts'][0]['LastTradePrice'])*100) in range(low,high+1):
           response += '%s %s\n' % (
             market['Contracts'][0]['LastTradePrice'],
             market['TickerSymbol'],
