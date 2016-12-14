@@ -120,11 +120,14 @@ if __name__ == "__main__":
     if slack_client.rtm_connect():
         print("StarterBot connected and running!")
         while True:
-            command, channel = parse_slack_output(slack_client.rtm_read())
-            if command and channel:
-                handle_command(command, channel)
-            if datetime.now().minute % 15 == 0 and datetime.now().second == 0:
-                check_for_new_contracts()
+            try:
+                command, channel = parse_slack_output(slack_client.rtm_read())
+                if command and channel:
+                    handle_command(command, channel)
+                if datetime.now().minute % 15 == 0 and datetime.now().second == 0:
+                    check_for_new_contracts()
+            except:
+                print("Error: " + command)
             time.sleep(READ_WEBSOCKET_DELAY)
     else:
         print("Connection failed. Invalid Slack token or bot ID?")
