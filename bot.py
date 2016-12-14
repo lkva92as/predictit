@@ -19,7 +19,6 @@ def check_ticker(ticker):
     data = requests.get("https://www.predictit.org/api/marketdata/ticker/" + ticker)
     return data.text != 'null'
 
-# get_all_matching('pres.gha')
 def get_all_matching(ticker):
     data = requests.get("https://www.predictit.org/api/marketdata/all")
     response = ""
@@ -48,6 +47,25 @@ def get_all_matching(ticker):
         response = "No matching contracts found"
     return response.strip()
 
+def contracts_in_range(low, high):
+    data = requests.get("https://www.predictit.org/api/marketdata/all")
+    response = ""
+    for market in data.json()['Markets']:
+        if len(market['Contracts']) == 1 and round(float(market['Contracts'][0]['LastTradePrice'])*100) in range(low,high):
+          response += '%s %s\n' % (
+            market['Contracts'][0]['LastTradePrice'],
+            market['TickerSymbol'],
+          )
+        else:
+            for contract in market['Contracts']:
+                if round(float(contract['LastTradePrice'])*100) in range(low,high):
+                    response += '%s %s - %s\n' % (
+                        contract['LastTradePrice'],
+                        market['TickerSymbol'],
+                        contract['TickerSymbol'],
+                    )
+    return response.strip()
+
 def get_quote(ticker):
     data = requests.get("https://www.predictit.org/api/marketdata/ticker/" + ticker)
     return '%s: Bid: %s Ask: %s Last: %s' % (
@@ -67,8 +85,9 @@ def handle_command(command, channel):
         response = "Too short"
     elif '<' in command:
         response = 'Parsed as a url; try again'
-    # elif check_ticker(command):
-    #     response = get_quote(command)
+    elif command.lower().startswith("range"):
+        cmd, low, high = command.split(' ')
+        response = contracts_in_range(int(low), int(high))
     else:
         response = get_all_matching(command)
     
