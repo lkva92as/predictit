@@ -5,24 +5,58 @@ from slackclient import SlackClient
 import json
 import requests
 from datetime import datetime
+import redis
 
 f = json.load(open('secrets.json', 'r'))
 BOT_ID = f['BOT_ID']
 SLACK_BOT_TOKEN = f['SLACK_BOT_TOKEN']
-ALERT_CHANNEL = f['ALERT_CHANNEL']
-TEST_CHANNEL = f['TEST_CHANNEL']
+if os.environ.get('PI_ENV') == 'production':
+    ALERT_CHANNEL = f['GENERAL_CHANNEL']
+else:
+    ALERT_CHANNEL = f['TEST_CHANNEL']
 
 AT_BOT = "<@" + BOT_ID + ">"
 slack_client = SlackClient(SLACK_BOT_TOKEN)
 
-def check_ticker(ticker):
-    data = requests.get("https://www.predictit.org/api/marketdata/ticker/" + ticker)
-    return data.text != 'null'
+r = redis.Redis()
+
+def last_updated():
+    ts = r.get('pi:last-updated')
+    return int(ts) if ts else 0
+
+def save_update_ts(ts):
+    r.set('pi:last-updated', ts)
+
+def fetch_data():
+    if time.time() - last_updated() > 30:
+        data = requests.get("https://www.predictit.org/api/marketdata/all")
+        if data.status_code != 200:
+            print("PI api call failed")
+            return {}
+        save_update_ts(int(time.time()))
+        check_for_new_contracts(json.loads(r.get('pi:data').decode('utf-8')), data.json()['Markets'])
+        r.set('pi:data', json.dumps(data.json()['Markets']))
+        return data.json()['Markets']
+    else:
+        return json.loads(r.get('pi:data').decode('utf-8'))
+
+def check_for_new_contracts(existing_data, current_data):
+    existing_markets = [x['ID'] for x in existing_data]
+    for market in current_data:
+        if market['ID'] not in existing_markets:
+            msg = "New market: " + market['TickerSymbol'] + ' ' + market['URL']
+            post_message(ALERT_CHANNEL, msg)
+        elif len(market['Contracts']) > 1:
+            existing_contracts = [x['ID'] for x in market['Contracts']]
+            for contract in market['Contracts']:
+                if contract['ID'] not in existing_contracts:
+                    msg = "New contract: " + contract['TickerSymbol'] + ' in market ' + market['TickerSymbol']
+                    post_message(ALERT_CHANNEL, msg)
 
 def get_all_matching(ticker):
-    data = requests.get("https://www.predictit.org/api/marketdata/all")
+    data = fetch_data()
     response = ""
-    for market in data.json()['Markets']:
+    for market in data:
         if market['TickerSymbol'].lower().startswith(ticker.lower()):
             if len(market['Contracts']) == 1:
               response += '%s: Bid: %s Ask: %s Last: %s\n %s\n' % (
@@ -66,21 +100,7 @@ def contracts_in_range(low, high):
                     )
     return response.strip()
 
-def get_quote(ticker):
-    data = requests.get("https://www.predictit.org/api/marketdata/ticker/" + ticker)
-    return '%s: Bid: %s Ask: %s Last: %s' % (
-      ticker,
-      data.json()['Contracts'][0]['BestSellYesCost'],
-      data.json()['Contracts'][0]['BestBuyYesCost'],
-      data.json()['Contracts'][0]['LastTradePrice'],
-    )
-
 def handle_command(command, channel):
-    """
-        Receives commands directed at the bot and determines if they
-        are valid commands. If so, then acts on the commands. If not,
-        returns back what it needs for clarification.
-    """
     if len(command) < 3:
         response = "Too short"
     elif '<' in command:
@@ -90,15 +110,13 @@ def handle_command(command, channel):
         response = contracts_in_range(int(low), int(high))
     else:
         response = get_all_matching(command)
-    
+    post_message(channel, response)
+
+def post_message(channel, response):
+    print(str(datetime.now()) + ' ' + response)
     slack_client.api_call("chat.postMessage", channel=channel, text=response, as_user=True)
 
 def parse_slack_output(slack_rtm_output):
-    """
-        The Slack Real Time Messaging API is an events firehose.
-        this parsing function returns None unless a message is
-        directed at the Bot, based on its ID.
-    """
     output_list = slack_rtm_output
     if output_list and len(output_list) > 0:
         for output in output_list:
@@ -107,46 +125,23 @@ def parse_slack_output(slack_rtm_output):
                 return output['text'].split(AT_BOT)[1].strip(), output['channel']
     return None, None
 
-def check_for_new_contracts():
-    data = requests.get("https://www.predictit.org/api/marketdata/all").json()['Markets']
-    current_contracts = [x['TickerSymbol'] for x in data]
-
-    f = open('contracts', 'r')
-    old_contracts = f.read().strip().split('|')
-    f.close()
-
-    new_contracts = set(current_contracts) - set(old_contracts)
-
-    if len(new_contracts) > 0:
-        # new_contract_alert(list(new_contracts))
-        new_contract_alert([x for x in data if x['TickerSymbol'] in list(new_contracts)])
-
-        f = open('new_contracts', 'a')
-        f.write('|'.join(list(new_contracts)) + ' ' + str(time.time()) + '\n')
-        f.close()
-
-        f = open('contracts', 'w')
-        f.write('|'.join(set(old_contracts) | set(current_contracts)))
-        f.close()
-
-def new_contract_alert(lst):
-    for contract in lst:
-        msg = "New contract: " + contract['TickerSymbol'] + ' ' + contract['URL']
-        slack_client.api_call("chat.postMessage", channel=ALERT_CHANNEL, text=msg, as_user=True)
-
 if __name__ == "__main__":
     READ_WEBSOCKET_DELAY = 1 # 1 second delay between reading from firehose
     if slack_client.rtm_connect():
         print("StarterBot connected and running!")
+        time.sleep(1)
+        while slack_client.rtm_read():
+            pass
+
         while True:
             try:
                 command, channel = parse_slack_output(slack_client.rtm_read())
                 if command and channel:
                     handle_command(command, channel)
-                if datetime.now().minute % 15 == 0 and datetime.now().second == 0:
-                    check_for_new_contracts()
+                if time.time() - last_updated() > 600:
+                    fetch_data()
             except:
-                print("Error: " + command)
+                print(str(datetime.now()) + " Error: " + str(command))
             time.sleep(READ_WEBSOCKET_DELAY)
     else:
         print("Connection failed. Invalid Slack token or bot ID?")
