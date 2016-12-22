@@ -27,6 +27,10 @@ def last_updated():
 def save_update_ts(ts):
     r.set('pi:last-updated', ts)
 
+def get_saved_data():
+    data = r.get('pi:data')
+    return json.loads(data.decode('utf-8')) if data else {}
+
 def fetch_data():
     if time.time() - last_updated() > 30:
         data = requests.get("https://www.predictit.org/api/marketdata/all")
@@ -34,7 +38,7 @@ def fetch_data():
             print("PI api call failed")
             return {}
         save_update_ts(int(time.time()))
-        check_for_new_contracts(json.loads(r.get('pi:data').decode('utf-8')), data.json()['Markets'])
+        check_for_new_contracts(get_saved_data(), data.json()['Markets'])
         r.set('pi:data', json.dumps(data.json()['Markets']))
         return data.json()['Markets']
     else:
