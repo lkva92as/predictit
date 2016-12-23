@@ -38,7 +38,9 @@ def fetch_data():
             print("PI api call failed")
             return {}
         save_update_ts(int(time.time()))
-        check_for_new_contracts(get_saved_data(), data.json()['Markets'])
+        existing_data = get_saved_data()
+        if existing_data != {}:
+            check_for_new_contracts(existing_data, data.json()['Markets'])
         r.set('pi:data', json.dumps(data.json()['Markets']))
         return data.json()['Markets']
     else:
