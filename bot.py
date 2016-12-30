@@ -53,7 +53,7 @@ def check_for_new_contracts(existing_data, current_data):
             msg = "New market: " + market['TickerSymbol'] + ' ' + market['URL']
             post_message(ALERT_CHANNEL, msg)
         elif len(market['Contracts']) > 1:
-            existing_contracts = [x['ID'] for x in market['Contracts']]
+            existing_contracts = [x['ID'] for x in [i for i in existing_data if i['ID'] == market['ID']][0]['Contracts']]
             for contract in market['Contracts']:
                 if contract['ID'] not in existing_contracts:
                     msg = "New contract: " + contract['TickerSymbol'] + ' in market ' + market['TickerSymbol']
